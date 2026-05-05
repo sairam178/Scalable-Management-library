@@ -221,6 +221,12 @@ def _update_label(self, text):
 •	Network Distribution — Distribute tasks across multiple machines using sockets or Celery.
 •	Deadline Scheduling — Add task deadlines; mark overdue tasks in red.
 •	Real-time CPU/Memory Monitor — Show actual system resource usage per thread.
+
+
+
+
+
+
 9. Key Concepts Explained
 
 Thread vs Process
@@ -233,6 +239,14 @@ Deadlock
 Permanent blocking of two or more threads waiting for resources held by each other. Requires all four Coffman Conditions simultaneously: Mutual Exclusion (resource can't be shared), Hold and Wait (thread holds one, waits for another), No Preemption (can't forcibly take resources), Circular Wait (A waits for B, B waits for A). Breaking any one condition prevents deadlock. Our project uses a single lock, making circular wait impossible.
 Priority Scheduling
 Tasks are assigned priority values and a min-heap (PriorityQueue) ensures the highest-priority task is always dequeued first. This mirrors OS scheduling where real-time or interactive processes receive higher priority than background batch jobs. Priority inversion (a low-priority task blocking a high-priority one) is a known problem — solved by priority inheritance in real OS schedulers.
+
+
+
+
+
+
+
+
  
 10. Conclusion
 
