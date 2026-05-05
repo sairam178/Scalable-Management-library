@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>ThreadPool OS v2 — Working</title>
+<style>
+/* ── TOKENS ─────────────────────────────────────────── */
+:root{
+  --bg:#07090D;--surf:#0D1117;--card:#13181F;--border:#1E252E;
+  --text:#D0D8E4;--muted:#5B6478;
+  --blue:#3B8EEA;--green:#3CC468;--amber:#D4A017;
+  --red:#E8453C;--purple:#9B6EF3;--cyan:#22D3EE;
+  --orange:#F07830;--teal:#14B8A6;
+}
+.light{
+  --bg:#F0F4F8;--surf:#fff;--card:#F8FAFC;--border:#E2E8F0;
+  --text:#1A202C;--muted:#718096;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
+     min-height:100vh;font-size:11px;transition:background .3s,color .3s;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+
+/* ── HEADER ──────────────────────────────────────────── */
+header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 18px;background:var(--card);
+  border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:100;
+}
+.logo{
+  font-size:14px;font-weight:900;letter-spacing:3px;
+  color:var(--blue);text-shadow:0 0 18px rgba(59,142,234,.5);
+}
+.logo span{color:var(--cyan);}
+.logo sup{font-size:7px;color:var(--muted);vertical-align:super;}
+.hdr-r{display:flex;align-items:center;gap:10px;}
+.pill{
+  font-size:9px;padding:3px 10px;border-radius:20px;
+  border:1px solid;display:flex;align-items:center;gap:5px;transition:all .3s;
+}
+.pill.idle{border-color:var(--muted);color:var(--muted);}
+.pill.running{border-color:var(--green);color:var(--green);
+              box-shadow:0 0 12px rgba(60,196,104,.3);}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+.pill.running .dot{animation:blink 1s infinite;}
+
+/* ── TABS ─────────────────────────────────────────────── */
+.tabs{
+  display:flex;padding:0 18px;background:var(--card);
+  border-bottom:1px solid var(--border);
+}
+.tab{
+  font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  padding:9px 15px;border:none;background:none;color:var(--muted);
+  cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;
+  display:flex;align-items:center;gap:5px;font-family:inherit;
+}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue);}
+.cnt{
+  background:var(--blue);color:#fff;border-radius:10px;
+  font-size:8px;padding:1px 6px;
+}
+
+/* ── PANELS ──────────────────────────────────────────── */
+.panel{display:none;padding:14px 18px;}
+.panel.active{display:block;}
+
+/* ── GRIDS ───────────────────────────────────────────── */
+.g2{display:grid;grid-template-columns:1fr 290px;gap:12px;}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+
+/* ── CARD ────────────────────────────────────────────── */
+.card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:8px;padding:13px;position:relative;
+  overflow:hidden;transition:background .3s;
+}
+.card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--blue),transparent);
+  opacity:.3;
+}
+.card-title{
+  font-size:8px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  color:var(--muted);margin-bottom:11px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+
+/* ── STAT CARDS ──────────────────────────────────────── */
+.sc{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:8px;padding:11px 13px;display:flex;
+  flex-direction:column;gap:4px;transition:all .25s;
+}
+.sc:hover{border-color:var(--blue);transform:translateY(-2px);}
+.sv{font-size:26px;font-weight:900;line-height:1;letter-spacing:-1px;}
+.sl{font-size:8px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;}
+
+/* ── INPUTS ──────────────────────────────────────────── */
+.ir{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+input[type=text],select{
+  background:var(--surf);border:1px solid var(--border);color:var(--text);
+  font-family:inherit;font-size:10px;padding:7px 10px;border-radius:6px;outline:none;
+  transition:border-color .2s;
+}
+input[type=text]{flex:1;min-width:130px;}
+input[type=text]:focus,select:focus{border-color:var(--blue);}
+input::placeholder{color:var(--muted);}
+select{cursor:pointer;}
+
+/* ── BUTTONS ─────────────────────────────────────────── */
+.btn{
+  font-family:inherit;font-size:9px;font-weight:700;letter-spacing:1px;
+  text-transform:uppercase;padding:7px 12px;border-radius:6px;
+  border:none;cursor:pointer;transition:all .15s;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:4px;
+}
+.btn:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.18);}
+.btn:active:not(:disabled){transform:translateY(0);}
+.btn:disabled{opacity:.35;cursor:not-allowed;}
+.ba{background:#1B4332;color:var(--green);border:1px solid #2D6A4F;}
+.bs{background:#0C2A5E;color:var(--blue);border:1px solid #1A4A8A;}
+.bst{background:#4A0E0E;color:var(--red);border:1px solid #7A1A1A;}
+.br{background:#1E1535;color:var(--purple);border:1px solid #3D2878;}
+.bb{background:#3A2800;color:var(--amber);border:1px solid #6A4800;}
+.be{background:#0D2B2A;color:var(--teal);border:1px solid #14533F;}
+.bd2{background:var(--surf);color:var(--muted);border:1px solid var(--border);}
+
+/* ── TABLE ───────────────────────────────────────────── */
+.tw{overflow-y:auto;max-height:260px;}
+table{width:100%;border-collapse:collapse;font-size:10px;}
+thead th{
+  text-align:left;padding:6px 7px;font-size:7px;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);
+  position:sticky;top:0;background:var(--card);z-index:1;
+}
+tbody tr{border-bottom:1px solid rgba(30,37,46,.6);transition:background .15s;}
+tbody tr:hover{background:rgba(59,142,234,.05);}
+tbody tr.row-done{background:rgba(60,196,104,.05);}
+tbody tr.row-paused{background:rgba(212,160,23,.06);}
+tbody td{padding:6px 7px;vertical-align:middle;}
+.dh{cursor:grab;color:var(--muted);padding:0 3px;user-select:none;font-size:13px;}
+.dh:active{cursor:grabbing;}
+tr.dragging{opacity:.3;}
+tr.drag-over{outline:2px solid var(--blue);}
+
+/* ── BADGES ──────────────────────────────────────────── */
+.badge{
+  display:inline-flex;align-items:center;
+  padding:2px 7px;border-radius:12px;
+  font-size:7px;font-weight:700;letter-spacing:.5px;
+  text-transform:uppercase;border:1px solid;
+}
+.bw {color:var(--amber);border-color:rgba(212,160,23,.4);background:rgba(212,160,23,.1);}
+.brun{color:var(--blue);border-color:rgba(59,142,234,.4);background:rgba(59,142,234,.1);}
+.bdn {color:var(--green);border-color:rgba(60,196,104,.4);background:rgba(60,196,104,.1);}
+.bps {color:var(--amber);border-color:rgba(212,160,23,.4);background:rgba(212,160,23,.08);}
+.bHigh  {color:var(--red);border-color:rgba(232,69,60,.3);background:rgba(232,69,60,.08);}
+.bMedium{color:var(--amber);border-color:rgba(212,160,23,.3);background:rgba(212,160,23,.08);}
+.bLow   {color:var(--muted);border-color:rgba(90,100,120,.3);background:rgba(90,100,120,.06);}
+.bCPU   {color:var(--red);border-color:rgba(232,69,60,.3);background:rgba(232,69,60,.08);}
+.bIO    {color:var(--blue);border-color:rgba(59,142,234,.3);background:rgba(59,142,234,.08);}
+.bNetwork{color:var(--green);border-color:rgba(60,196,104,.3);background:rgba(60,196,104,.08);}
+
+/* ── PROGRESS ────────────────────────────────────────── */
+.pw{display:flex;align-items:center;gap:5px;}
+.pb{flex:1;height:4px;border-radius:2px;background:var(--border);overflow:hidden;min-width:40px;}
+.pf{height:100%;border-radius:2px;transition:width .1s linear;background:var(--blue);}
+.pp{font-size:9px;color:var(--muted);width:28px;text-align:right;flex-shrink:0;}
+.pe{font-size:8px;color:var(--cyan);width:34px;flex-shrink:0;}
+
+/* ── THREAD CARDS ─────────────────────────────────────── */
+.tg{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.tc{
+  background:var(--surf);border:1px solid var(--border);
+  border-radius:7px;padding:8px 10px;transition:all .3s;
+  position:relative;overflow:hidden;
+}
+.tc.busy{border-color:var(--orange);box-shadow:0 0 14px rgba(240,120,48,.2);}
+.tc-bar{position:absolute;bottom:0;left:0;height:2px;background:var(--orange);width:0%;}
+.tc-name{font-size:8px;font-weight:700;color:var(--blue);letter-spacing:1px;margin-bottom:3px;}
+.tc-row{display:flex;align-items:center;gap:5px;font-size:10px;}
+.tc-dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;}
+.tc.busy .tc-dot{background:var(--orange);animation:blink .8s infinite;}
+.tc-task{font-size:8px;color:var(--orange);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.tc-cat{font-size:7px;margin-top:1px;}
+
+/* ── LOG ──────────────────────────────────────────────── */
+.lb{
+  background:var(--surf);border:1px solid var(--border);
+  border-radius:6px;padding:8px;height:180px;overflow-y:auto;
+  font-size:9px;line-height:1.85;
+}
+.ll{display:flex;gap:7px;animation:fu .18s ease;}
+.lts{color:var(--muted);flex-shrink:0;}
+.la{color:var(--amber);}.ls{color:var(--blue);}.ld{color:var(--green);}
+.ly{color:var(--purple);}.lp{color:var(--orange);}
+
+/* ── PERF ─────────────────────────────────────────────── */
+.perf-bars{display:flex;align-items:flex-end;gap:14px;height:70px;padding:0 10px;}
+.pcol{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;}
+.pbo{width:100%;background:var(--border);border-radius:3px 3px 0 0;height:55px;position:relative;overflow:hidden;}
+.pbi{position:absolute;bottom:0;width:100%;border-radius:3px 3px 0 0;transition:height .9s cubic-bezier(.23,1,.32,1);height:0%;}
+.pcl{font-size:8px;color:var(--muted);}
+.pcv{font-size:9px;font-weight:700;}
+
+/* ── ICON BTN ─────────────────────────────────────────── */
+.ib{
+  background:none;border:none;cursor:pointer;font-size:12px;
+  padding:2px 4px;border-radius:4px;color:inherit;transition:background .15s;
+}
+.ib:hover{background:var(--border);}
+.ib:disabled{opacity:.3;cursor:default;}
+
+/* ── ANIMATIONS ───────────────────────────────────────── */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes fu{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+@keyframes si{from{opacity:0;transform:translateX(-5px)}to{opacity:1;transform:translateX(0)}}
+.rn{animation:si .2s ease;}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">⚙ THREAD<span>POOL</span> OS <sup>v2</sup></div>
+  <div class="hdr-r">
+    <span style="font-size:9px;color:var(--muted)">POOL: <b style="color:var(--text)">4 threads</b></span>
+    <div class="pill idle" id="pill"><div class="dot"></div><span id="ptxt">IDLE</span></div>
+    <button class="btn bd2" id="tbtn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+  </div>
+</header>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('main',this)">⚙ Manager <span class="cnt" id="c-main">0</span></button>
+  <button class="tab" onclick="switchTab('hist',this)">📋 History <span class="cnt" id="c-hist">0</span></button>
+  <button class="tab" onclick="switchTab('stats',this)">📊 Statistics</button>
+</div>
+
+<!-- ═══ MANAGER ═══ -->
+<div class="panel active" id="panel-main">
+  <!-- Stats row -->
+  <div class="g4" style="margin-bottom:12px">
+    <div class="sc"><div class="sv" style="color:var(--blue)"  id="s-tot">0</div><div class="sl">Total</div></div>
+    <div class="sc"><div class="sv" style="color:var(--amber)" id="s-wai">0</div><div class="sl">Waiting</div></div>
+    <div class="sc"><div class="sv" style="color:var(--orange)"id="s-run">0</div><div class="sl">Running</div></div>
+    <div class="sc"><div class="sv" style="color:var(--green)" id="s-don">0</div><div class="sl">Done</div></div>
+  </div>
+
+  <div class="g2">
+    <!-- LEFT -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+
+      <!-- Input card -->
+      <div class="card">
+        <div class="card-title">📋 Task Input</div>
+        <div class="ir" style="margin-bottom:8px">
+          <input type="text" id="tname" placeholder="Task name… (press Enter to add)"/>
+          <select id="tpri"><option value="High">🔴 High</option><option value="Medium" selected>🟡 Medium</option><option value="Low">⚪ Low</option></select>
+          <select id="tcat"><option value="CPU">🖥 CPU</option><option value="IO">💾 I/O</option><option value="Network">🌐 Net</option></select>
+          <button class="btn ba" onclick="addTask()">➕ Add</button>
+        </div>
+        <div class="ir">
+          <button class="btn bs"  id="btn-start" onclick="startExec()">▶ Start</button>
+          <button class="btn bst" id="btn-stop"  onclick="stopExec()" disabled>⏹ Stop</button>
+          <button class="btn br"  onclick="resetAll()">🔄 Reset</button>
+          <button class="btn bb"  onclick="runBench()">📊 Benchmark</button>
+          <button class="btn be"  onclick="expLog()">⬇ Log</button>
+          <button class="btn bd2" onclick="loadDemo()">🎲 Demo</button>
+        </div>
+      </div>
+
+      <!-- Task queue -->
+      <div class="card">
+        <div class="card-title">📦 Task Queue — drag ⠿ to reorder waiting tasks</div>
+        <div class="tw">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:18px"></th>
+                <th>ID</th><th>Name</th><th>Cat</th><th>Pri</th>
+                <th>Status</th><th>Thread</th><th>Progress</th><th>ETA</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="task-body">
+              <tr id="empty-row">
+                <td colspan="10" style="text-align:center;color:var(--muted);padding:26px">
+                  No tasks yet — add one above or click 🎲 Demo
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Performance -->
+      <div class="card">
+        <div class="card-title">⚡ Performance Comparison</div>
+        <div class="g3" style="margin-bottom:10px">
+          <div style="text-align:center">
+            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Single-Thread</div>
+            <div style="font-size:22px;font-weight:900;color:var(--red)" id="p-s">—</div>
+            <div style="font-size:8px;color:var(--muted)">seconds</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Multi-Thread</div>
+            <div style="font-size:22px;font-weight:900;color:var(--green)" id="p-m">—</div>
+            <div style="font-size:8px;color:var(--muted)">seconds</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Speedup</div>
+            <div style="font-size:22px;font-weight:900;color:var(--cyan)" id="p-x">—</div>
+            <div style="font-size:8px;color:var(--muted)">× faster</div>
+          </div>
+        </div>
+        <div class="perf-bars">
+          <div class="pcol">
+            <div class="pcv" id="pv-s" style="color:var(--red)">—</div>
+            <div class="pbo"><div class="pbi" id="pb-s" style="background:var(--red)"></div></div>
+            <div class="pcl">Single</div>
+          </div>
+          <div class="pcol">
+            <div class="pcv" id="pv-m" style="color:var(--green)">—</div>
+            <div class="pbo"><div class="pbi" id="pb-m" style="background:var(--green)"></div></div>
+            <div class="pcl">Multi (4)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <!-- Threads -->
+      <div class="card">
+        <div class="card-title">🧵 Thread Pool</div>
+        <div class="tg" id="tgrid"></div>
+      </div>
+
+      <!-- Graph -->
+      <div class="card">
+        <div class="card-title">📈 Live Activity Graph</div>
+        <canvas id="graph" style="width:100%;height:80px;display:block;border-radius:5px;background:var(--surf)"></canvas>
+        <div style="display:flex;gap:12px;margin-top:5px">
+          <span style="font-size:8px;color:var(--muted)">■ <span style="color:var(--orange)">Busy threads</span></span>
+          <span style="font-size:8px;color:var(--muted)">■ <span style="color:var(--green)">Tasks done</span></span>
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div class="card" style="flex:1">
+        <div class="card-title">
+          📜 Execution Log
+          <button class="btn be" style="font-size:8px;padding:2px 7px" onclick="expLog()">⬇ Export</button>
+        </div>
+        <div class="lb" id="log-box">
+          <div class="ll"><span class="lts">--:--:--</span><span class="ly">System v2 ready — 4 threads initialized.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ HISTORY ═══ -->
+<div class="panel" id="panel-hist">
+  <div class="card">
+    <div class="card-title">
+      📋 Completed Task History
+      <button class="btn be" onclick="expHist()">⬇ Export CSV</button>
+    </div>
+    <div style="overflow-y:auto;max-height:400px">
+      <table>
+        <thead><tr><th>#</th><th>Name</th><th>Category</th><th>Priority</th><th>Thread</th><th>Duration</th><th>Completed At</th><th>Est. Speedup</th></tr></thead>
+        <tbody id="hist-body"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px">No completed tasks yet.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ STATS ═══ -->
+<div class="panel" id="panel-stats">
+  <div class="g3" style="margin-bottom:12px">
+    <div class="sc"><div class="sl">Total Executed</div><div class="sv" style="color:var(--blue)"  id="st-ex">0</div></div>
+    <div class="sc"><div class="sl">Avg Duration</div> <div class="sv" style="color:var(--cyan)"  id="st-av">—</div><div style="font-size:8px;color:var(--muted)">seconds</div></div>
+    <div class="sc"><div class="sl">Best Speedup</div> <div class="sv" style="color:var(--green)" id="st-sp">—</div><div style="font-size:8px;color:var(--muted)">× faster</div></div>
+  </div>
+  <div class="g2">
+    <div class="card"><div class="card-title">🗂 By Category</div><canvas id="cat-cv" style="width:100%;height:140px;display:block"></canvas></div>
+    <div class="card"><div class="card-title">⚡ By Priority</div><canvas id="pri-cv" style="width:100%;height:140px;display:block"></canvas></div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <div class="card-title">🧵 Thread Utilization</div>
+    <div id="util" style="display:flex;flex-direction:column;gap:8px;margin-top:4px"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  CONSTANTS & STATE
+// ═══════════════════════════════════════════════════════════
+const NT = 4;
+const PMAP = { High:1, Medium:2, Low:3 };
+
+let taskId    = 0;
+let tasks     = [];
+let queue     = [];
+let paused    = new Set();
+let done      = [];
+let histCount = 0;
+let logLines  = [];
+
+// Thread objects
+let threads = [];
+function makeThreads() {
+  threads = [];
+  for (let i = 0; i < NT; i++)
+    threads.push({ id:i, status:'idle', taskId:null, tasksDone:0, totalTime:0 });
+}
+makeThreads();
+
+let running    = false;
+let animFrames = {};   // task.id → rAF handle
+let taskTimers = {};   // task.id → setTimeout handle
+let graphData  = { busy:[], done:[] };
+let graphTimer = null;
+let isDark     = true;
+let dragSrcId  = null;
+
+// ═══════════════════════════════════════════════════════════
+//  THEME
+// ═══════════════════════════════════════════════════════════
+function toggleTheme() {
+  isDark = !isDark;
+  document.body.classList.toggle('light', !isDark);
+  document.getElementById('tbtn').textContent = isDark ? '🌙' : '☀️';
+  drawGraph();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TABS
+// ═══════════════════════════════════════════════════════════
+function switchTab(name, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'stats') drawStats();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  THREAD UI INIT
+// ═══════════════════════════════════════════════════════════
+function initThreadUI() {
+  const g = document.getElementById('tgrid');
+  g.innerHTML = '';
+  for (let i = 0; i < NT; i++) {
+    g.innerHTML += `
+      <div class="tc" id="tc-${i}">
+        <div class="tc-name">THREAD-${i+1}</div>
+        <div class="tc-row">
+          <div class="tc-dot" id="tdot-${i}"></div>
+          <span id="tstat-${i}">Idle</span>
+        </div>
+        <div class="tc-task" id="ttask-${i}"></div>
+        <div class="tc-cat"  id="tcat-${i}"></div>
+        <div class="tc-bar"  id="tbar-${i}"></div>
+      </div>`;
+  }
+}
+initThreadUI();
+
+// ═══════════════════════════════════════════════════════════
+//  LOGGING
+// ═══════════════════════════════════════════════════════════
+function doLog(msg, cls) {
+  const now = new Date();
+  const ts  = [now.getHours(), now.getMinutes(), now.getSeconds()]
+                .map(n => String(n).padStart(2,'0')).join(':');
+  logLines.push({ ts, msg });
+  const box = document.getElementById('log-box');
+  const div = document.createElement('div');
+  div.className = 'll';
+  div.innerHTML = `<span class="lts">${ts}</span><span class="${cls}">${msg}</span>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ADD TASK
+// ═══════════════════════════════════════════════════════════
+function addTask(name, priority, category) {
+  name     = name     || document.getElementById('tname').value.trim();
+  priority = priority || document.getElementById('tpri').value;
+  category = category || document.getElementById('tcat').value;
+  if (!name) { alert('Please enter a task name.'); return; }
+
+  const task = {
+    id:          ++taskId,
+    name:        name,
+    priority:    priority,
+    category:    category,
+    pval:        PMAP[priority],
+    status:      'Waiting',
+    duration:    parseFloat((Math.random() * 2.5 + 1.5).toFixed(2)),
+    threadId:    null,
+    completedAt: null,
+  };
+
+  tasks.push(task);
+  queue.push(task);
+  sortQueue();
+  renderRow(task);
+  updateStats();
+  doLog(`➕ [${category}] ${name} [${priority}]`, 'la');
+  document.getElementById('tname').value = '';
+  if (running) scheduleNext();
+}
+
+function sortQueue() {
+  queue.sort((a, b) => a.pval - b.pval || tasks.indexOf(a) - tasks.indexOf(b));
+}
+
+function loadDemo() {
+  [['Video Encoding','High','CPU'],['DB Backup','High','IO'],['API Fetch','High','Network'],
+   ['Log Analysis','Medium','CPU'],['File Sync','Medium','IO'],['Email Send','Medium','Network'],
+   ['Cache Clear','Low','CPU'],['Thumbnail','Low','IO'],['DNS Lookup','Low','Network']]
+  .forEach(([n,p,c]) => addTask(n, p, c));
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RENDER ROW
+// ═══════════════════════════════════════════════════════════
+function renderRow(task) {
+  const tbody = document.getElementById('task-body');
+  const empty = document.getElementById('empty-row');
+  if (empty) empty.remove();
+
+  const tr = document.createElement('tr');
+  tr.id = 'row-' + task.id;
+  tr.className = 'rn';
+  tr.draggable = true;
+  tr.innerHTML = `
+    <td><span class="dh">⠿</span></td>
+    <td style="color:var(--muted)">#${task.id}</td>
+    <td style="font-weight:700">${task.name}</td>
+    <td><span class="badge b${task.category}">${task.category}</span></td>
+    <td><span class="badge b${task.priority}">${task.priority}</span></td>
+    <td id="rs-${task.id}"><span class="badge bw">Waiting</span></td>
+    <td id="rt-${task.id}" style="color:var(--muted)">—</td>
+    <td>
+      <div class="pw">
+        <div class="pb"><div class="pf" id="pf-${task.id}"></div></div>
+        <div class="pp" id="pp-${task.id}">0%</div>
+      </div>
+    </td>
+    <td><span class="pe" id="pe-${task.id}">—</span></td>
+    <td><button class="ib" id="pbtn-${task.id}" onclick="togglePause(${task.id})">⏸</button></td>`;
+  tbody.appendChild(tr);
+  setupDrag(tr, task.id);
+}
+
+function updateRow(task) {
+  const rs   = document.getElementById('rs-' + task.id);
+  const rt   = document.getElementById('rt-' + task.id);
+  const row  = document.getElementById('row-' + task.id);
+  const pbtn = document.getElementById('pbtn-' + task.id);
+  if (!rs) return;
+
+  if (task.status === 'Running') {
+    rs.innerHTML = `<span class="badge brun">▶ Running</span>`;
+    rt.innerHTML = `<span style="color:var(--orange)">T-${task.threadId+1}</span>`;
+    row.classList.remove('row-paused');
+    if (pbtn) pbtn.textContent = '⏸';
+
+  } else if (task.status === 'Completed') {
+    rs.innerHTML = `<span class="badge bdn">✔ Done</span>`;
+    row.classList.add('row-done');
+    row.classList.remove('row-paused');
+    const pf = document.getElementById('pf-' + task.id);
+    if (pf) { pf.style.width = '100%'; pf.style.background = 'var(--green)'; }
+    document.getElementById('pp-' + task.id).textContent = '100%';
+    document.getElementById('pe-' + task.id).textContent = '✔';
+    if (pbtn) { pbtn.textContent = '✔'; pbtn.disabled = true; }
+
+  } else if (task.status === 'Paused') {
+    rs.innerHTML = `<span class="badge bps">⏸ Paused</span>`;
+    row.classList.add('row-paused');
+    if (pbtn) pbtn.textContent = '▶';
+
+  } else {
+    rs.innerHTML = `<span class="badge bw">Waiting</span>`;
+    row.classList.remove('row-paused');
+    if (pbtn) pbtn.textContent = '⏸';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PAUSE / RESUME
+// ═══════════════════════════════════════════════════════════
+function togglePause(id) {
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+
+  if (task.status === 'Waiting') {
+    task.status = 'Paused';
+    paused.add(id);
+    queue = queue.filter(t => t.id !== id);
+    updateRow(task);
+    doLog(`⏸ Paused (queue) → ${task.name}`, 'lp');
+
+  } else if (task.status === 'Paused') {
+    task.status = 'Waiting';
+    paused.delete(id);
+    queue.push(task);
+    sortQueue();
+    updateRow(task);
+    doLog(`▶ Resumed → ${task.name}`, 'ls');
+    if (running) scheduleNext();
+
+  } else if (task.status === 'Running') {
+    // Cancel its animation and timer
+    if (animFrames[id]) { cancelAnimationFrame(animFrames[id]); delete animFrames[id]; }
+    if (taskTimers[id]) { clearTimeout(taskTimers[id]); delete taskTimers[id]; }
+    // Free the thread
+    const ti = task.threadId;
+    if (ti !== null) setThreadIdle(ti);
+    task.threadId = null;
+    task.status   = 'Paused';
+    paused.add(id);
+    updateRow(task);
+    doLog(`⏸ Paused (mid-run) → ${task.name}`, 'lp');
+    updateStats();
+    if (running) scheduleNext();
+  }
+  updateStats();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DRAG TO REORDER
+// ═══════════════════════════════════════════════════════════
+function setupDrag(tr, id) {
+  tr.addEventListener('dragstart', () => {
+    dragSrcId = id;
+    setTimeout(() => tr.classList.add('dragging'), 0);
+  });
+  tr.addEventListener('dragend', () => {
+    tr.classList.remove('dragging');
+    document.querySelectorAll('.drag-over').forEach(r => r.classList.remove('drag-over'));
+  });
+  tr.addEventListener('dragover', e => {
+    e.preventDefault();
+    if (dragSrcId !== id) {
+      document.querySelectorAll('.drag-over').forEach(r => r.classList.remove('drag-over'));
+      tr.classList.add('drag-over');
+    }
+  });
+  tr.addEventListener('drop', e => {
+    e.preventDefault();
+    tr.classList.remove('drag-over');
+    if (!dragSrcId || dragSrcId === id) return;
+    const srcTask = tasks.find(t => t.id === dragSrcId);
+    const tgtTask = tasks.find(t => t.id === id);
+    if (!srcTask || !tgtTask ||
+        srcTask.status !== 'Waiting' || tgtTask.status !== 'Waiting') return;
+    const tbody  = document.getElementById('task-body');
+    const srcRow = document.getElementById('row-' + dragSrcId);
+    const tgtRow = document.getElementById('row-' + id);
+    const allRows = [...tbody.querySelectorAll('tr[id^="row-"]')];
+    if (allRows.indexOf(srcRow) < allRows.indexOf(tgtRow))
+      tbody.insertBefore(srcRow, tgtRow.nextSibling);
+    else
+      tbody.insertBefore(srcRow, tgtRow);
+    // Sync queue order with DOM
+    const order = [...tbody.querySelectorAll('tr[id^="row-"]')]
+                    .map(r => parseInt(r.id.replace('row-','')));
+    queue.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    doLog(`↕ Reordered: ${srcTask.name} ↔ ${tgtTask.name}`, 'ly');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  THREAD UI
+// ═══════════════════════════════════════════════════════════
+function setThreadBusy(idx, task) {
+  threads[idx].status = 'busy';
+  threads[idx].taskId = task.id;
+  document.getElementById('tc-'    + idx).classList.add('busy');
+  document.getElementById('tstat-' + idx).textContent = 'Busy';
+  document.getElementById('ttask-' + idx).textContent = task.name;
+  const catColor = { CPU:'var(--red)', IO:'var(--blue)', Network:'var(--green)' };
+  document.getElementById('tcat-' + idx).innerHTML =
+    `<span style="font-size:7px;color:${catColor[task.category]||'var(--muted)'}">[${task.category}]</span>`;
+  const bar = document.getElementById('tbar-' + idx);
+  bar.style.transition = 'none';
+  bar.style.width = '0%';
+  requestAnimationFrame(() => {
+    bar.style.transition = `width ${task.duration}s linear`;
+    bar.style.width = '100%';
+  });
+}
+
+function setThreadIdle(idx) {
+  threads[idx].status = 'idle';
+  threads[idx].taskId = null;
+  document.getElementById('tc-'    + idx).classList.remove('busy');
+  document.getElementById('tstat-' + idx).textContent = 'Idle';
+  document.getElementById('ttask-' + idx).textContent = '';
+  document.getElementById('tcat-'  + idx).textContent = '';
+  const bar = document.getElementById('tbar-' + idx);
+  bar.style.transition = 'none';
+  bar.style.width = '0%';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SCHEDULER  ← closure bug fixed with IIFE
+// ═══════════════════════════════════════════════════════════
+function scheduleNext() {
+  if (!running) return;
+
+  for (let i = 0; i < NT; i++) {
+    if (threads[i].status !== 'idle') continue;
+    const idx = queue.findIndex(t => t.status === 'Waiting' && !paused.has(t.id));
+    if (idx === -1) continue;
+
+    const task = queue.splice(idx, 1)[0];
+    task.status   = 'Running';
+    task.threadId = i;
+
+    setThreadBusy(i, task);
+    updateRow(task);
+    updateStats();
+    doLog(`▶ T-${i+1} started → [${task.category}] ${task.name}`, 'ls');
+
+    // IIFE captures task + threadIdx correctly per iteration
+    (function execute(theTask, threadIdx) {
+      const startMs = Date.now();
+      const durMs   = theTask.duration * 1000;
+
+      // progress animation
+      function animStep() {
+        if (theTask.status !== 'Running') return;
+        const elapsed = Date.now() - startMs;
+        const pct     = Math.min((elapsed / durMs) * 100, 100);
+        const eta     = Math.max((durMs - elapsed) / 1000, 0);
+        const pf = document.getElementById('pf-' + theTask.id);
+        const pp = document.getElementById('pp-' + theTask.id);
+        const pe = document.getElementById('pe-' + theTask.id);
+        if (pf) pf.style.width = pct.toFixed(1) + '%';
+        if (pp) pp.textContent = Math.round(pct) + '%';
+        if (pe) pe.textContent = eta.toFixed(1) + 's';
+        if (pct < 100) animFrames[theTask.id] = requestAnimationFrame(animStep);
+      }
+      animFrames[theTask.id] = requestAnimationFrame(animStep);
+
+      // completion timer
+      taskTimers[theTask.id] = setTimeout(function () {
+        if (theTask.status !== 'Running') return;   // may have been paused
+        if (animFrames[theTask.id]) {
+          cancelAnimationFrame(animFrames[theTask.id]);
+          delete animFrames[theTask.id];
+        }
+        delete taskTimers[theTask.id];
+
+        theTask.status      = 'Completed';
+        theTask.completedAt = new Date().toLocaleTimeString();
+        done.push(theTask);
+        threads[threadIdx].tasksDone++;
+        threads[threadIdx].totalTime += theTask.duration;
+
+        setThreadIdle(threadIdx);
+        updateRow(theTask);
+        updateStats();
+        addHistory(theTask);
+        doLog(`✔ T-${threadIdx+1} done → ${theTask.name} (${theTask.duration}s)`, 'ld');
+
+        if (running) scheduleNext();
+
+        // Check if all finished
+        const stillPending = queue.filter(t => t.status === 'Waiting' && !paused.has(t.id));
+        if (stillPending.length === 0 && threads.every(t => t.status === 'idle')) {
+          allDone();
+        }
+      }, durMs);
+
+    })(task, i);  // ← IIFE call — captures i by value
+  }
+}
+
+function allDone() {
+  running = false;
+  setPill('idle');
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-stop').disabled  = true;
+  doLog('✅ All tasks completed. Pool idle.', 'ly');
+  stopGraph();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CONTROLS
+// ═══════════════════════════════════════════════════════════
+function startExec() {
+  const pending = queue.filter(t => t.status === 'Waiting' && !paused.has(t.id));
+  if (!tasks.length)   { alert('Add tasks first!'); return; }
+  if (!pending.length) { alert('No waiting tasks. Add more or resume paused ones.'); return; }
+  running = true;
+  setPill('running');
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').disabled  = false;
+  doLog('▶▶ Execution started — pool active.', 'ly');
+  startGraph();
+  scheduleNext();
+}
+
+function stopExec() {
+  running = false;
+  setPill('idle');
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-stop').disabled  = true;
+  Object.values(animFrames).forEach(f => cancelAnimationFrame(f));
+  Object.values(taskTimers).forEach(f => clearTimeout(f));
+  animFrames = {};
+  taskTimers = {};
+  for (let i = 0; i < NT; i++) setThreadIdle(i);
+  doLog('⏹ Execution stopped.', 'ly');
+  stopGraph();
+}
+
+function resetAll() {
+  stopExec();
+  taskId = 0; tasks = []; queue = []; paused.clear(); done = []; histCount = 0; logLines = [];
+  makeThreads();
+  for (let i = 0; i < NT; i++) setThreadIdle(i);
+
+  document.getElementById('task-body').innerHTML =
+    '<tr id="empty-row"><td colspan="10" style="text-align:center;color:var(--muted);padding:26px">No tasks — add above or click 🎲 Demo</td></tr>';
+  document.getElementById('log-box').innerHTML =
+    '<div class="ll"><span class="lts">--:--:--</span><span class="ly">System reset. Ready.</span></div>';
+  document.getElementById('hist-body').innerHTML =
+    '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:26px">No history yet.</td></tr>';
+
+  ['p-s','p-m','p-x','pv-s','pv-m'].forEach(id => document.getElementById(id).textContent = '—');
+  document.getElementById('pb-s').style.height = '0%';
+  document.getElementById('pb-m').style.height = '0%';
+  graphData = { busy:[], done:[] };
+  updateStats();
+  setPill('idle');
+}
+
+function setPill(state) {
+  const p = document.getElementById('pill');
+  const t = document.getElementById('ptxt');
+  p.className = 'pill ' + state;
+  t.textContent = state === 'running' ? 'RUNNING' : 'IDLE';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  STATS
+// ═══════════════════════════════════════════════════════════
+function updateStats() {
+  document.getElementById('s-tot').textContent = tasks.length;
+  document.getElementById('s-wai').textContent = tasks.filter(t=>t.status==='Waiting').length;
+  document.getElementById('s-run').textContent = tasks.filter(t=>t.status==='Running').length;
+  document.getElementById('s-don').textContent = tasks.filter(t=>t.status==='Completed').length;
+  document.getElementById('c-main').textContent = tasks.length;
+  document.getElementById('c-hist').textContent = done.length;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BENCHMARK
+// ═══════════════════════════════════════════════════════════
+function runBench() {
+  if (!tasks.length) { alert('Add tasks first!'); return; }
+  const durs   = tasks.map(t => t.duration);
+  const single = durs.reduce((a,b) => a+b, 0);
+  const multi  = Math.max(...durs);
+  const speed  = (single / multi).toFixed(2);
+  document.getElementById('p-s').textContent  = single.toFixed(2) + 's';
+  document.getElementById('p-m').textContent  = multi.toFixed(2)  + 's';
+  document.getElementById('p-x').textContent  = speed + '×';
+  document.getElementById('pv-s').textContent = single.toFixed(2) + 's';
+  document.getElementById('pv-m').textContent = multi.toFixed(2)  + 's';
+  document.getElementById('pb-s').style.height = '95%';
+  document.getElementById('pb-m').style.height = Math.round((multi/single)*95) + '%';
+  doLog(`📊 Single:${single.toFixed(2)}s | Multi:${multi.toFixed(2)}s | ×${speed}`, 'ly');
+  document.getElementById('st-ex').textContent = done.length || tasks.length;
+  document.getElementById('st-av').textContent = (single/durs.length).toFixed(2);
+  document.getElementById('st-sp').textContent = speed + '×';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HISTORY
+// ═══════════════════════════════════════════════════════════
+function addHistory(task) {
+  const tbody = document.getElementById('hist-body');
+  if (histCount === 0) tbody.innerHTML = '';
+  histCount++;
+  const totalDur = tasks.reduce((a,t) => a+t.duration, 0);
+  const sp = task.duration > 0 ? (totalDur / task.duration).toFixed(2) + '×' : '—';
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td style="color:var(--muted)">${histCount}</td>
+    <td style="font-weight:700">${task.name}</td>
+    <td><span class="badge b${task.category}">${task.category}</span></td>
+    <td><span class="badge b${task.priority}">${task.priority}</span></td>
+    <td style="color:var(--orange)">Thread-${task.threadId+1}</td>
+    <td>${task.duration}s</td>
+    <td style="color:var(--muted)">${task.completedAt||'—'}</td>
+    <td style="color:var(--cyan)">${sp}</td>`;
+  tbody.prepend(tr);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  EXPORT
+// ═══════════════════════════════════════════════════════════
+function expLog() {
+  if (!logLines.length) { alert('Log is empty.'); return; }
+  dlFile('threadpool_log.txt', logLines.map(l=>`[${l.ts}] ${l.msg}`).join('\n'), 'text/plain');
+}
+function expHist() {
+  if (!done.length) { alert('No history yet.'); return; }
+  let csv = '#,Name,Category,Priority,Thread,Duration,Completed At\n';
+  done.forEach((t,i) => {
+    csv += `${i+1},"${t.name}",${t.category},${t.priority},Thread-${t.threadId+1},${t.duration}s,${t.completedAt||''}\n`;
+  });
+  dlFile('threadpool_history.csv', csv, 'text/csv');
+}
+function dlFile(name, content, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], {type}));
+  a.download = name;
+  a.click();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  LIVE ACTIVITY GRAPH
+// ═══════════════════════════════════════════════════════════
+const MAX_PTS = 40;
+
+function startGraph() {
+  if (graphTimer) return;
+  graphTimer = setInterval(() => {
+    graphData.busy.push(threads.filter(t => t.status === 'busy').length);
+    graphData.done.push(done.length);
+    if (graphData.busy.length > MAX_PTS) { graphData.busy.shift(); graphData.done.shift(); }
+    drawGraph();
+  }, 500);
+}
+function stopGraph() { clearInterval(graphTimer); graphTimer = null; }
+
+function drawGraph() {
+  const cv = document.getElementById('graph');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const W = cv.offsetWidth || 260, H = 80;
+  cv.width = W; cv.height = H;
+  ctx.fillStyle = isDark ? '#0D1117' : '#F8FAFC';
+  ctx.fillRect(0, 0, W, H);
+
+  // grid lines
+  ctx.strokeStyle = isDark ? '#1E252E' : '#E2E8F0';
+  ctx.lineWidth = 1;
+  [0, 2, 4].forEach(v => {
+    const y = H - (v / 4) * H * 0.84 - 5;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillStyle = '#5B6478'; ctx.font = '7px Courier New';
+    ctx.fillText(v, 2, y - 2);
+  });
+
+  const n = graphData.busy.length;
+  if (n < 2) return;
+  const step = W / MAX_PTS;
+
+  function drawLine(data, color, maxV) {
+    ctx.beginPath();
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.shadowColor = color; ctx.shadowBlur  = 5;
+    data.forEach((v, i) => {
+      const x = (MAX_PTS - n + i) * step;
+      const y = H - (v / maxV) * H * 0.8 - 7;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // gradient fill
+    ctx.beginPath();
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, color + '44'); grad.addColorStop(1, color + '00');
+    ctx.fillStyle = grad;
+    data.forEach((v, i) => {
+      const x = (MAX_PTS - n + i) * step;
+      const y = H - (v / maxV) * H * 0.8 - 7;
+      if (i === 0) ctx.moveTo(x, H - 7);
+      ctx.lineTo(x, y);
+    });
+    ctx.lineTo((MAX_PTS - 1) * step, H - 7);
+    ctx.closePath(); ctx.fill();
+  }
+
+  const maxDone = Math.max(...graphData.done, 1);
+  drawLine(graphData.busy, '#F07830', 4);
+  drawLine(graphData.done.map(v => (v / maxDone) * 4), '#3CC468', 4);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  STATS CHARTS
+// ═══════════════════════════════════════════════════════════
+function drawStats() {
+  document.getElementById('st-ex').textContent = done.length;
+  if (done.length) {
+    const avg = (done.reduce((a,t) => a+t.duration, 0) / done.length).toFixed(2);
+    document.getElementById('st-av').textContent = avg;
+    const s = tasks.reduce((a,t) => a+t.duration, 0);
+    const m = Math.max(...tasks.map(t => t.duration), 1);
+    document.getElementById('st-sp').textContent = (s/m).toFixed(2) + '×';
+  }
+  drawBar('cat-cv',
+    ['CPU', 'I/O', 'Network'],
+    [tasks.filter(t=>t.category==='CPU').length,
+     tasks.filter(t=>t.category==='IO').length,
+     tasks.filter(t=>t.category==='Network').length],
+    ['#E8453C','#3B8EEA','#3CC468']
+  );
+  drawBar('pri-cv',
+    ['High', 'Medium', 'Low'],
+    [tasks.filter(t=>t.priority==='High').length,
+     tasks.filter(t=>t.priority==='Medium').length,
+     tasks.filter(t=>t.priority==='Low').length],
+    ['#E8453C','#D4A017','#5B6478']
+  );
+  const util = document.getElementById('util');
+  util.innerHTML = '';
+  threads.forEach((t, i) => {
+    const pct = done.length > 0 ? Math.round((t.tasksDone / done.length) * 100) : 0;
+    util.innerHTML += `
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:9px;color:var(--blue);width:68px">Thread-${i+1}</span>
+        <div style="flex:1;height:7px;background:var(--border);border-radius:3px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:var(--blue);border-radius:3px;transition:width .8s"></div>
+        </div>
+        <span style="font-size:9px;color:var(--muted);width:54px">${t.tasksDone} tasks</span>
+        <span style="font-size:9px;color:var(--muted)">${t.totalTime.toFixed(1)}s</span>
+      </div>`;
+  });
+}
+
+function drawBar(cvId, labels, values, colors) {
+  const cv = document.getElementById(cvId);
+  if (!cv) return;
+  const W = cv.offsetWidth || 300, H = 140;
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = isDark ? '#13181F' : '#F8FAFC';
+  ctx.fillRect(0, 0, W, H);
+  const maxV = Math.max(...values, 1);
+  const barW = Math.floor(W / labels.length * 0.5);
+  const gap  = Math.floor(W / labels.length);
+  labels.forEach((lbl, i) => {
+    const x    = gap * i + gap / 2 - barW / 2;
+    const barH = Math.max(Math.round((values[i] / maxV) * (H - 36)), values[i] > 0 ? 4 : 0);
+    const y    = H - 26 - barH;
+    ctx.fillStyle = colors[i];
+    ctx.shadowColor = colors[i]; ctx.shadowBlur = 7;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, barW, barH, 3);
+    else ctx.rect(x, y, barW, barH);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = isDark ? '#D0D8E4' : '#1A202C';
+    ctx.font = 'bold 11px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText(values[i], x + barW/2, y - 4);
+    ctx.fillStyle = '#5B6478';
+    ctx.font = '8px Courier New';
+    ctx.fillText(lbl, x + barW/2, H - 10);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  EVENTS
+// ═══════════════════════════════════════════════════════════
+document.getElementById('tname').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addTask();
+});
+window.addEventListener('resize', drawGraph);
+</script>
+</body>
+</html>
